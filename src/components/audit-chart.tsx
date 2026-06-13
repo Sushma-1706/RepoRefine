@@ -12,9 +12,9 @@ interface AuditChartProps {
 const CustomTooltip = ({ active, payload, label }: Partial<TooltipContentProps<ValueType, NameType>>) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-900 border border-slate-700 p-2 rounded shadow-xl">
-        <p className="text-blue-400 font-bold text-xs">{label}</p>
-        <p className="text-white text-sm">Score: {payload[0].value}/100</p>
+      <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/50 p-3 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.15)] text-center min-w-[100px]">
+        <p className="text-blue-400 font-bold text-xs mb-1 tracking-wider uppercase">{label}</p>
+        <p className="text-white text-base font-black tracking-tight">{payload[0].value}<span className="text-slate-500 font-medium text-xs">/100</span></p>
       </div>
     );
   }
@@ -27,7 +27,12 @@ export function AuditChart({ scores }: AuditChartProps) {
     { subject: 'Identity', A: scores.branding, fullMark: 100 },
     { subject: 'Code', A: scores.repoQuality, fullMark: 100 },
     { subject: 'Activity', A: scores.consistency, fullMark: 100 },
-    { subject: 'Impact', A: scores.profile, fullMark: 100 },
+    ...(typeof scores.commitHygiene === 'number'
+      ? [{ subject: 'Commits', A: scores.commitHygiene, fullMark: 100 }]
+      : []),
+    ...(typeof scores.contribution === 'number'
+      ? [{ subject: 'Contrib', A: scores.contribution, fullMark: 100 }]
+      : []),
     { subject: 'Health', A: scores.total, fullMark: 100 },
   ];
 
@@ -46,13 +51,19 @@ export function AuditChart({ scores }: AuditChartProps) {
           />
           
           {/* The Blue Shape */}
+          <defs>
+            <linearGradient id="radarGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8}/>
+              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.8}/>
+            </linearGradient>
+          </defs>
           <Radar
             name="Score"
             dataKey="A"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            fill="#3b82f6"
-            fillOpacity={0.4}
+            stroke="#60a5fa"
+            strokeWidth={3}
+            fill="url(#radarGradient)"
+            fillOpacity={0.5}
           />
 
           {/* Hover Interaction */}

@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { analyzeProfile, analyzeRepoLink } from './actions';
 import { ProfileAnalysis, RepoLinkAudit, AuditMode } from '@/types';
 import { AuditChart } from '@/components/audit-chart';
+import { CommitAnalyticsSection } from '@/components/commit-analytics';
 import { RepoAuditResults } from '@/components/repo-audit-results';
-import { Card, Badge } from '@/components/ui-parts';
-import { Loader2, Github, AlertTriangle, CheckCircle, Quote, Star,GitFork, Users, ArrowLeft, RefreshCcw, Link2 } from 'lucide-react';
+import { Card, Badge, ProgressBar } from '@/components/ui-parts';
+import { Loader2, Github, AlertTriangle, CheckCircle, Quote, Star, GitFork, Users, ArrowLeft, RefreshCcw, Link2 } from 'lucide-react';
 
 export default function Home() {
   const [mode, setMode] = useState<AuditMode>('profile');
@@ -20,28 +21,28 @@ export default function Home() {
 
   const hasResults = Boolean(data || repoData);
 
-async function handleProfileSubmit(formData: FormData) {
-  const username = formData.get("username") as string;
-  const persona = formData.get("persona") as string;
-  setLastInput({ username, persona });
-  setLoading(true);
-  setError("");
-  setData(null);
-  setRepoData(null);
-  try {
-    const result = await analyzeProfile(formData);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setData(result);
+  async function handleProfileSubmit(formData: FormData) {
+    const username = formData.get("username") as string;
+    const persona = formData.get("persona") as string;
+    setLastInput({ username, persona });
+    setLoading(true);
+    setError("");
+    setData(null);
+    setRepoData(null);
+    try {
+      const result = await analyzeProfile(formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setData(result);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not analyze profile.";
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Could not analyze profile.";
-    setError(msg);
-  } finally {
-    setLoading(false);
   }
-}
 
   async function handleRepoSubmit(formData: FormData) {
     const repoUrl = formData.get("repoUrl") as string;
@@ -61,42 +62,42 @@ async function handleProfileSubmit(formData: FormData) {
     }
   }
 
-const handleRefresh = async () => {
-  if (mode === 'profile' && lastInput) {
-    setRefreshing(true);  // changed
-    setError("");
-    try {
-      const formData = new FormData();
-      formData.set("username", lastInput.username);
-      formData.set("persona", lastInput.persona);
-      const result = await analyzeProfile(formData);
-      if (result.error) {
-        setError(result.error);
-      } else {
-        setData(result);
+  const handleRefresh = async () => {
+    if (mode === 'profile' && lastInput) {
+      setRefreshing(true);  // changed
+      setError("");
+      try {
+        const formData = new FormData();
+        formData.set("username", lastInput.username);
+        formData.set("persona", lastInput.persona);
+        const result = await analyzeProfile(formData);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setData(result);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not analyze profile.";
+        setError(msg);
+      } finally {
+        setRefreshing(false);  // changed
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not analyze profile.";
-      setError(msg);
-    } finally {
-      setRefreshing(false);  // changed
+    } else if (mode === 'repo' && lastRepoUrl) {
+      setRefreshing(true);  // changed
+      setError("");
+      try {
+        const formData = new FormData();
+        formData.set("repoUrl", lastRepoUrl);
+        const result = await analyzeRepoLink(formData);
+        setRepoData(result);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Could not analyze repository.";
+        setError(message);
+      } finally {
+        setRefreshing(false);  // changed
+      }
     }
-  } else if (mode === 'repo' && lastRepoUrl) {
-    setRefreshing(true);  // changed
-    setError("");
-    try {
-      const formData = new FormData();
-      formData.set("repoUrl", lastRepoUrl);
-      const result = await analyzeRepoLink(formData);
-      setRepoData(result);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not analyze repository.";
-      setError(message);
-    } finally {
-      setRefreshing(false);  // changed
-    }
-  }
-};
+  };
 
   const handleReset = () => {
     setData(null);
@@ -158,10 +159,10 @@ const handleRefresh = async () => {
               <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white">
                 {mode === 'profile' ? (
                   <>Is your profile <br className="hidden md:block" />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">hiring ready?</span></>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">hiring ready?</span></>
                 ) : (
                   <>Does your repo have a <br className="hidden md:block" />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">great README?</span></>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">great README?</span></>
                 )}
               </h1>
               <p className="text-slate-400 max-w-2xl mx-auto text-lg md:text-xl leading-relaxed">
@@ -175,11 +176,10 @@ const handleRefresh = async () => {
               <button
                 type="button"
                 onClick={() => { setMode('profile'); setError(''); }}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium border transition ${
-                  mode === 'profile'
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
-                }`}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium border transition ${mode === 'profile'
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
               >
                 <Users className="w-4 h-4" />
                 Profile Audit
@@ -187,11 +187,10 @@ const handleRefresh = async () => {
               <button
                 type="button"
                 onClick={() => { setMode('repo'); setError(''); }}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium border transition ${
-                  mode === 'repo'
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
-                    : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
-                }`}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium border transition ${mode === 'repo'
+                  ? 'bg-emerald-600 border-emerald-500 text-white'
+                  : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
               >
                 <Link2 className="w-4 h-4" />
                 Repo Link Audit
@@ -309,6 +308,8 @@ const handleRefresh = async () => {
               </div>
             </div>
 
+            <CommitAnalyticsSection analytics={data.commitAnalytics} />
+
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pt-4">
               <div className="md:col-span-4 space-y-8">
                 <Card>
@@ -320,11 +321,11 @@ const handleRefresh = async () => {
 
                 <Card className="border-red-900/30 bg-red-950/10">
                   <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                    <AlertTriangle className="text-red-500 w-5 h-5"/>
+                    <AlertTriangle className="text-red-500 w-5 h-5" />
                     Critical Red Flags
                   </h3>
                   <ul className="space-y-3">
-                    {data.redFlags.length === 0 && <li className="text-emerald-400 text-sm flex gap-2"><CheckCircle className="w-4 h-4"/> Clean profile!</li>}
+                    {data.redFlags.length === 0 && <li className="text-emerald-400 text-sm flex gap-2"><CheckCircle className="w-4 h-4" /> Clean profile!</li>}
                     {data.redFlags.map((flag, i) => (
                       <li key={i} className="flex items-start gap-3 text-sm text-red-200 bg-red-500/10 p-3 rounded-lg border border-red-500/10">
                         <span className="text-red-500 mt-0.5">•</span> {flag}

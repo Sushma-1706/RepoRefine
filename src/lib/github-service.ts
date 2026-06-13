@@ -1,6 +1,12 @@
 import { AnalyzedRepo, ProfileAnalysis } from "@/types";
 import { github, formatGitHubError } from "@/lib/github/client";
 import { ProfileQueryResponse } from "@/lib/github/graphql-types";
+import {
+  DocumentationMatch,
+  evaluateDocumentation,
+  findDocumentationMatch,
+  TreeEntry,
+} from "@/lib/documentation-detection";
 
 const PROFILE_QUERY = `
   query($username: String!) {
@@ -14,13 +20,10 @@ const PROFILE_QUERY = `
       websiteUrl
       followers { totalCount }
       
-      # Get total count of ALL repos (including forks)
       stats: repositories(ownerAffiliations: OWNER) {
         totalCount
       }
 
-      # FETCH UP TO 100 NON-FORK REPOS
-      # We sort by STARGAZERS to ensure we analyze the most important work first
       repositories(first: 100, orderBy: {field: STARGAZERS, direction: DESC}, ownerAffiliations: OWNER, isFork: false) {
         nodes {
           name
@@ -28,8 +31,29 @@ const PROFILE_QUERY = `
           stargazerCount
           forkCount
           pushedAt
+          isEmpty
           primaryLanguage { name }
           licenseInfo { name }
+          rootTree: object(expression: "HEAD:") {
+            ... on Tree {
+              entries { name type }
+            }
+          }
+          docsTree: object(expression: "HEAD:docs") {
+            ... on Tree {
+              entries { name type }
+            }
+          }
+          docTree: object(expression: "HEAD:doc") {
+            ... on Tree {
+              entries { name type }
+            }
+          }
+          documentationTree: object(expression: "HEAD:documentation") {
+            ... on Tree {
+              entries { name type }
+            }
+          }
           openIssues: issues(states: OPEN) { totalCount }
           object(expression: "HEAD:README.md") {
             ... on Blob { text }
@@ -39,6 +63,51 @@ const PROFILE_QUERY = `
     }
   }
 `;
+
+function buildDocumentationContentQuery(
+  username: string,
+  matches: Array<{ repoName: string; match: DocumentationMatch }>
+): string {
+  const repoFields = matches
+    .map(
+      ({ repoName, match }, index) => `
+    repo_${index}: repository(name: "${repoName}") {
+      name
+      documentationContent: object(expression: "${match.expression}") {
+        ... on Blob { text }
+      }
+    }`
+    )
+    .join("\n");
+
+  return `
+    query($username: String!) {
+      user(login: $username) {
+        ${repoFields}
+      }
+    }
+  `;
+}
+
+async function fetchDocumentationContents(
+  username: string,
+  matches: Array<{ repoName: string; match: DocumentationMatch }>
+): Promise<Map<string, string | null>> {
+  const contentByRepo = new Map<string, string | null>();
+  if (matches.length === 0) return contentByRepo;
+
+  const query = buildDocumentationContentQuery(username, matches);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: Record<string, any> = await github(query, { username });
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const repoName = matches[index].repoName;
+    const repoData = data.user?.[`repo_${index}`];
+    contentByRepo.set(repoName, repoData?.documentationContent?.text ?? null);
+  }
+
+  return contentByRepo;
+}
 
 // Parse README headings and detect present/missing sections
 function detectReadmeSections(text: string): { detected: string[]; missing: string[] } {
@@ -81,29 +150,60 @@ export async function getProfileData(username: string): Promise<Partial<ProfileA
 
     const user = data.user;
     const breakdown: { label: string; value: number; reason: string }[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const repoNodes: any[] = user.repositories.nodes;
 
-    const analyzedRepos: AnalyzedRepo[] = user.repositories.nodes.map((repo) => {
+    const documentationMatches = repoNodes.map((repo) => ({
+      repoName: repo.name as string,
+      match: findDocumentationMatch(
+        repo.rootTree?.entries as TreeEntry[] | undefined,
+        repo.docsTree?.entries as TreeEntry[] | undefined,
+        repo.docTree?.entries as TreeEntry[] | undefined,
+        repo.documentationTree?.entries as TreeEntry[] | undefined
+      ),
+      isEmpty: Boolean(repo.isEmpty),
+    }));
+
+    const reposNeedingContent = documentationMatches.filter(
+      ({ match, isEmpty }) => match && !isEmpty
+    ) as Array<{ repoName: string; match: DocumentationMatch; isEmpty: boolean }>;
+
+    const documentationContents = await fetchDocumentationContents(
+      username,
+      reposNeedingContent.map(({ repoName, match }) => ({ repoName, match }))
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const analyzedRepos: AnalyzedRepo[] = repoNodes.map((repo: any) => {
       const issues: string[] = [];
       let score = 100;
 
       if (!repo.description) { issues.push("Missing Description"); score -= 10; }
       if (!repo.licenseInfo) { issues.push("No License"); score -= 20; }
+      const docMatchInfo = documentationMatches.find((entry) => entry.repoName === repo.name);
+      const docEvaluation = evaluateDocumentation(
+        docMatchInfo?.match ?? null,
+        documentationContents.get(repo.name),
+        docMatchInfo?.isEmpty ?? false
+      );
+      issues.push(...docEvaluation.issues);
+      score -= docEvaluation.scoreDeduction;
       
       // Strict README check
-if (!repo.object?.text) {
-  issues.push("No README");
-  score -= 40;
-} else {
-  const { detected, missing } = detectReadmeSections(repo.object.text);
-  if (detected.length < 2) {
-    issues.push("Weak README (missing key sections)");
-    score -= 20;
-  }
-  if (missing.length > 5) {
-    issues.push(`README missing: ${missing.slice(0, 3).join(", ")}`);
-    score -= 10;
-  }
-}     
+      if (!repo.object?.text) {
+        issues.push("No README");
+        score -= 40;
+      } else {
+        const { detected, missing } = detectReadmeSections(repo.object.text);
+        if (detected.length < 2) {
+          issues.push("Weak README (missing key sections)");
+          score -= 20;
+        }
+        if (missing.length > 5) {
+          issues.push(`README missing: ${missing.slice(0, 3).join(", ")}`);
+          score -= 10;
+        }
+      }     
       const lastPush = new Date(repo.pushedAt);
       const daysSincePush = (Date.now() - lastPush.getTime()) / (1000 * 3600 * 24);
       if (daysSincePush > 365) { issues.push("Inactive > 1yr"); score -= 10; }
