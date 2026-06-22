@@ -27,7 +27,12 @@ export function AuditChart({ scores }: AuditChartProps) {
     { subject: 'Identity', A: scores.branding, fullMark: 100 },
     { subject: 'Code', A: scores.repoQuality, fullMark: 100 },
     { subject: 'Activity', A: scores.consistency, fullMark: 100 },
-    { subject: 'Impact', A: scores.profile, fullMark: 100 },
+    ...(typeof scores.commitHygiene === 'number'
+      ? [{ subject: 'Commits', A: scores.commitHygiene, fullMark: 100 }]
+      : []),
+    ...(typeof scores.contribution === 'number'
+      ? [{ subject: 'Contrib', A: scores.contribution, fullMark: 100 }]
+      : []),
     { subject: 'Health', A: scores.total, fullMark: 100 },
   ];
 
