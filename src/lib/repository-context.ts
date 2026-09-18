@@ -10,7 +10,7 @@ type GitHubCommit = { sha: string; commit: { message: string; author: { date: st
 
 export type RepositoryFile = { path: string; size: number; language: string; importance: "high" | "medium"; content?: string };
 export type RepositoryContext = {
-  owner: string; repository: string; branch: string; commitSha: string; description: string | null;
+  owner: string; repository: string; branch: string; commitSha: string; description: string | null; visibility: "public" | "private";
   languages: Record<string, number>; frameworks: string[]; packageManager: string | null;
   files: RepositoryFile[]; directories: string[]; entryPoints: string[]; scripts: Record<string, string>;
   environmentVariables: string[]; readme: { path: string; content?: string }; documentation: string[];
@@ -58,6 +58,9 @@ function parseEnv(content = "") { return content.split("\n").map(line => line.tr
 export async function getRepositoryContext(repositoryInput: string, requestedBranch?: string, refresh = false): Promise<RepositoryContext> {
   const { owner, repo } = parseRepoUrl(repositoryInput);
   const repository = await githubJson<{ default_branch: string; description: string | null; pushed_at: string; private: boolean }>(`https://api.github.com/repos/${owner}/${repo}`);
+  // This route has no user authentication/session integration. Never use a
+  // server-side token as an implicit credential for arbitrary private URLs.
+  if (repository.private) throw new Error("Private repositories cannot be indexed until GitHub user authorization is configured.");
   const branch = requestedBranch || repository.default_branch;
   const commit = await githubJson<{ commit: { sha: string } }>(`https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`);
   const cacheKey = `${owner}/${repo}/${branch}/${commit.commit.sha}`;
@@ -75,7 +78,9 @@ export async function getRepositoryContext(repositoryInput: string, requestedBra
     .sort((a, b) => Number(highPriority.test(b.path)) - Number(highPriority.test(a.path)) || (a.size ?? 0) - (b.size ?? 0)).slice(0, MAX_FILES);
   const contents = await Promise.all(eligible.map(async file => {
     try {
-      const blob = await githubJson<{ content?: string; encoding?: string }>(`https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${encodeURIComponent(branch)}`);
+      // Keep every inspected file pinned to the SHA resolved above. Using the
+      // moving branch here could mix evidence from different commits.
+      const blob = await githubJson<{ content?: string; encoding?: string }>(`https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${encodeURIComponent(commit.commit.sha)}`);
       return [file.path, blob.encoding === "base64" && blob.content ? Buffer.from(blob.content, "base64").toString("utf8") : ""] as const;
     } catch {
       // A disappearing or unsupported file must not invalidate the complete repository index.
@@ -87,7 +92,7 @@ export async function getRepositoryContext(repositoryInput: string, requestedBra
   const paths = treeResult.tree.map(item => item.path);
   const readmePath = paths.find(path => /^readme(?:\.md)?$/i.test(path)) ?? paths.find(path => /(^|\/)readme\.md$/i.test(path)) ?? "README.md";
   const context: RepositoryContext = {
-    owner, repository: repo, branch, commitSha: commit.commit.sha, description: repository.description, languages, frameworks: detectFrameworks(fileMap),
+    owner, repository: repo, branch, commitSha: commit.commit.sha, description: repository.description, visibility: repository.private ? "private" : "public", languages, frameworks: detectFrameworks(fileMap),
     packageManager: paths.includes("pnpm-lock.yaml") ? "pnpm" : paths.includes("yarn.lock") ? "yarn" : paths.includes("package-lock.json") || paths.includes("package.json") ? "npm" : paths.includes("requirements.txt") ? "pip" : null,
     files: eligible.map(file => ({ path: file.path, size: file.size ?? 0, language: languageFor(file.path), importance: priority(file.path), content: fileMap[file.path] })),
     directories: [...new Set(paths.map(path => path.split("/").slice(0, -1).join("/")).filter(Boolean))].slice(0, 120), entryPoints: paths.filter(path => /(^|\/)(main|index|page|app)\.(tsx?|jsx?|py)$/i.test(path)).slice(0, 20), scripts,
