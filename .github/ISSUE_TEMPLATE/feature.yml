@@ -1,0 +1,19 @@
+name: Feature request
+description: Propose a repository intelligence improvement.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Repository evidence
+      description: Identify relevant files, API behavior, or audit signals when applicable.

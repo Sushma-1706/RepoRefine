@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { RepoLinkAudit } from '@/types';
 import { Card, Badge } from '@/components/ui-parts';
+import { RepoAssistant } from '@/components/repo-assistant';
 import {
   AlertTriangle,
   CheckCircle,
@@ -123,6 +124,8 @@ export function RepoAuditResults({ data }: { data: RepoLinkAudit }) {
           <p className="text-slate-300 text-lg leading-relaxed">{data.improvementSummary}</p>
         </div>
       </div>
+
+      <RepoAssistant audit={data} />
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
         <div className="md:col-span-4 space-y-8">

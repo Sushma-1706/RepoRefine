@@ -30,7 +30,7 @@ async function handleProfileSubmit(formData: FormData) {
   setRepoData(null);
   try {
     const result = await analyzeProfile(formData);
-    if (result.error) {
+    if ("error" in result) {
       setError(result.error);
     } else {
       setData(result);
@@ -70,7 +70,7 @@ const handleRefresh = async () => {
       formData.set("username", lastInput.username);
       formData.set("persona", lastInput.persona);
       const result = await analyzeProfile(formData);
-      if (result.error) {
+      if ("error" in result) {
         setError(result.error);
       } else {
         setData(result);

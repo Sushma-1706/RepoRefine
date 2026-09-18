@@ -5,6 +5,8 @@ import { generateAIReview } from "@/lib/ai-service";
 import { analyzeRepoFromUrl } from "@/lib/repo-service";
 import { Persona, ProfileAnalysis, RepoLinkAudit } from "@/types";
 
+type ProfileResult = ProfileAnalysis | { error: string };
+
 type BackendResponse = {
   developer: {
     login: string;
@@ -62,6 +64,7 @@ async function getBackendProfile(username: string): Promise<Partial<ProfileAnaly
     forks: repo.forks,
     lastUpdated: repo.last_updated ? new Date(repo.last_updated).toLocaleDateString() : "Unknown",
     issues: repo.issues,
+    openIssues: repo.issues.length,
     score: repo.score,
   }));
 
@@ -91,19 +94,19 @@ async function getBackendProfile(username: string): Promise<Partial<ProfileAnaly
   };
 }
 
-export async function analyzeProfile(formData: FormData): Promise<ProfileAnalysis & { error?: string }> {
+export async function analyzeProfile(formData: FormData): Promise<ProfileResult> {
   const rawUsername = formData.get("username") as string;
   const username = rawUsername.trim();
   const persona = (formData.get("persona") as Persona) || "recruiter";
 
 if (!username) {
-  return { error: "Username cannot be empty." } as any;
+  return { error: "Username cannot be empty." }
 }
 if (username.length > 39) {
-  return { error: "Invalid GitHub username: too long (max 39 characters)." } as any;
+  return { error: "Invalid GitHub username: too long (max 39 characters)." }
 }
 if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(username)) {
-  return { error: "Invalid GitHub username: only letters, numbers, and hyphens allowed." } as any;
+  return { error: "Invalid GitHub username: only letters, numbers, and hyphens allowed." }
 }
 
   console.log(`🚀 Starting analysis for: ${username}`);
@@ -149,15 +152,15 @@ if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(username)) {
 } catch (error: unknown) {
   const message = error instanceof Error ? error.message : "Failed to analyze profile";
   if (message.includes("GITHUB_TOKEN")) {
-    return { error: "GitHub token is missing or invalid. Check your .env.local file." } as any;
+    return { error: "GitHub token is missing or invalid. Check your .env.local file." }
   }
   if (message.includes("not found") || message.includes("Could not resolve")) {
-    return { error: `GitHub user '${username}' not found.` } as any;
+    return { error: `GitHub user '${username}' not found.` }
   }
   if (message.includes("rate limit") || message.includes("429")) {
-    return { error: "GitHub API rate limit exceeded. Please wait a few minutes and try again." } as any;
+    return { error: "GitHub API rate limit exceeded. Please wait a few minutes and try again." }
   }
-  return { error: message } as any;
+  return { error: message }
   }
 }
 export async function analyzeRepoLink(formData: FormData): Promise<RepoLinkAudit> {
