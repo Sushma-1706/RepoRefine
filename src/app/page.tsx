@@ -117,8 +117,8 @@ const handleRefresh = async () => {
   };
 
   return (
-    <main className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30 pb-20">
-      <nav className="border-b border-slate-800 p-4 bg-[#020617]/80 backdrop-blur-xl sticky top-0 z-50">
+    <main className={`min-h-screen text-slate-200 selection:bg-sky-500/30 ${repoData ? 'bg-[#121925]' : 'bg-[#020617] pb-20'}`}>
+      {!repoData && <nav className="border-b border-slate-800 p-4 bg-[#020617]/80 backdrop-blur-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div
             className="flex items-center gap-2 text-blue-500 font-bold text-xl tracking-tight cursor-pointer hover:opacity-80 transition"
@@ -148,9 +148,9 @@ const handleRefresh = async () => {
             </div>
           )}
         </div>
-      </nav>
+      </nav>}
 
-      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-12">
+      <div className={repoData ? '' : 'max-w-6xl mx-auto p-4 md:p-8 space-y-12'}>
 
         {!hasResults && (
           <section className="text-center py-20 space-y-8 animate-in fade-in zoom-in duration-500">
@@ -394,7 +394,7 @@ const handleRefresh = async () => {
           </div>
         )}
 
-        {repoData && <RepoAuditResults data={repoData} />}
+        {repoData && <RepoAuditResults data={repoData} onRefresh={handleRefresh} refreshing={refreshing} />}
       </div>
     </main>
   );

@@ -1,346 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { RepoLinkAudit } from '@/types';
-import { Card, Badge } from '@/components/ui-parts';
 import { RepoAssistant } from '@/components/repo-assistant';
-import {
-  AlertTriangle,
-  CheckCircle,
-  Copy,
-  Download,
-  ExternalLink,
-  FileText,
-  GitBranch,
-  Star,
-  GitFork,
-} from 'lucide-react';
+import { Copy, Download, ExternalLink, FileCode2, GitBranch, Github, RefreshCw } from 'lucide-react';
 
-function getScoreColor(score: number) {
-  if (score >= 80) return 'text-emerald-400';
-  if (score >= 50) return 'text-amber-400';
-  return 'text-red-400';
-}
+type Section = 'overview' | 'chat' | 'architecture' | 'issues' | 'security' | 'docs' | 'cicd';
+const sections: Array<[Section, string]> = [['overview', 'Overview'], ['chat', 'Chat'], ['architecture', 'Architecture'], ['issues', 'Issues & PRs'], ['security', 'Security'], ['docs', 'Documentation'], ['cicd', 'CI/CD & testing']];
+const status = (value: boolean, yes = 'Detected', no = 'Not detected') => <span className={value ? 'text-emerald-300' : 'text-slate-400'}>{value ? yes : no}</span>;
 
-function getScoreBg(score: number) {
-  if (score >= 80) return 'bg-emerald-500/10 border-emerald-500/20';
-  if (score >= 50) return 'bg-amber-500/10 border-amber-500/20';
-  return 'bg-red-500/10 border-red-500/20';
-}
-
-function priorityVariant(priority: string): 'destructive' | 'default' | 'success' {
-  if (priority === 'high') return 'destructive';
-  if (priority === 'medium') return 'default';
-  return 'success';
-}
-
-export function RepoAuditResults({ data }: { data: RepoLinkAudit }) {
+export function RepoAuditResults({ data, onRefresh, refreshing }: { data: RepoLinkAudit; onRefresh?: () => void; refreshing?: boolean }) {
+  const [section, setSection] = useState<Section>('chat');
   const [readmeTab, setReadmeTab] = useState<'generated' | 'original'>('generated');
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const readmeContent =
-    readmeTab === 'generated' ? data.generatedReadme : data.readme.content || '_No existing README._';
-
-  const copyText = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  const downloadReadme = () => {
-    const blob = new Blob([data.generatedReadme], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'README.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const formatIssue = (issue: RepoLinkAudit['suggestedIssues'][0]) =>
-    `## ${issue.title}\n\n${issue.body}\n\n**Labels:** ${issue.labels.join(', ')}\n**Priority:** ${issue.priority}`;
-
-  return (
-    <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        <div className="md:col-span-8 bg-slate-900/50 border border-slate-800 rounded-2xl p-6 md:p-8 backdrop-blur-sm">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-3xl font-black text-white tracking-tight">
-                  {data.owner}/{data.repo}
-                </h2>
-                <a
-                  href={data.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 text-sm inline-flex items-center gap-1 mt-1"
-                >
-                  View on GitHub <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              {data.aiEnhanced && (
-                <Badge variant="success">AI Enhanced</Badge>
-              )}
-            </div>
-            <p className="text-slate-300 text-lg leading-relaxed">
-              {data.metadata.description || (
-                <span className="text-slate-600 italic">No repository description</span>
-              )}
-            </p>
-            <div className="flex flex-wrap gap-4 text-sm text-slate-400">
-              <span className="flex items-center gap-1">
-                <Star className="w-4 h-4" /> {data.metadata.stars} Stars
-              </span>
-              <span className="flex items-center gap-1">
-                <GitFork className="w-4 h-4" /> {data.metadata.forks} Forks
-              </span>
-              <span className="flex items-center gap-1">
-                <GitBranch className="w-4 h-4" /> {data.metadata.language || 'Unknown'}
-              </span>
-              <span>Updated {data.metadata.lastPushed}</span>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={`md:col-span-4 rounded-2xl p-8 flex flex-col items-center justify-center border ${getScoreBg(data.health.score)}`}
-        >
-          <span className="text-slate-400 font-medium uppercase tracking-widest text-sm mb-2">
-            Health Score
-          </span>
-          <span className={`text-8xl font-black tracking-tighter ${getScoreColor(data.health.score)}`}>
-            {data.health.score}
-          </span>
-          <span className="text-slate-500 text-sm mt-2">
-            Docs: {data.health.documentationScore}/100
-          </span>
-        </div>
+  const [draft, setDraft] = useState(data.generatedReadme);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { await navigator.clipboard.writeText(readmeTab === 'generated' ? draft : data.readme.content); setCopied(true); setTimeout(() => setCopied(false), 1800); };
+  const download = () => { const url = URL.createObjectURL(new Blob([draft], { type: 'text/markdown' })); const a = document.createElement('a'); a.href = url; a.download = 'README.md'; a.click(); URL.revokeObjectURL(url); };
+  return <div className="min-h-screen bg-[#121925] text-slate-200">
+    <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 border-r border-slate-800 bg-[#0d131d] p-4 lg:block">
+      <button type="button" onClick={() => setSection('chat')} className="mb-8 flex items-center gap-2 text-lg font-semibold text-slate-100"><span className="grid h-8 w-8 place-items-center rounded-lg bg-sky-400 text-slate-950"><Github className="h-5 w-5" /></span>RepoRefine</button>
+      <button type="button" onClick={() => setSection('chat')} className="mb-5 flex w-full items-center gap-2 rounded-lg bg-sky-400 px-3 py-2 text-sm font-semibold text-slate-950">+ New chat</button>
+      <p className="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-slate-500">Workspace</p>
+      <nav className="space-y-1">{sections.map(([key, label]) => <button type="button" key={key} onClick={() => setSection(key)} className={`w-full rounded-md px-3 py-2 text-left text-sm transition ${section === key ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}>{label}</button>)}</nav>
+      <div className="mt-8 border-t border-slate-800 pt-5"><p className="px-2 text-xs font-medium uppercase tracking-wider text-slate-500">Recent repository</p><button type="button" onClick={() => setSection('overview')} className="mt-2 w-full truncate px-2 text-left text-sm text-slate-300 hover:text-white">{data.owner}/{data.repo}</button></div>
+    </aside>
+    <main className="lg:pl-60">
+      <header className="sticky top-0 z-10 border-b border-slate-800 bg-[#121925]/95 px-4 py-3 backdrop-blur md:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4"><div className="min-w-0"><div className="flex items-center gap-2"><h1 className="truncate text-sm font-semibold text-slate-100">{data.owner}/{data.repo}</h1><span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs text-emerald-300">Public · verified</span></div><p className="mt-1 flex items-center gap-2 text-xs text-slate-500"><GitBranch className="h-3.5 w-3.5" /> Branch and analysis SHA are resolved in chat evidence.</p></div><div className="flex items-center gap-2"><a href={data.url} target="_blank" rel="noopener noreferrer" className="rounded-md p-2 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Open repository on GitHub"><ExternalLink className="h-4 w-4" /></a>{onRefresh && <button type="button" onClick={onRefresh} disabled={refreshing} className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Re-index</button>}</div></div>
+      </header>
+      <nav className="flex overflow-x-auto border-b border-slate-800 px-4 lg:hidden">{sections.map(([key, label]) => <button type="button" key={key} onClick={() => setSection(key)} className={`shrink-0 px-3 py-3 text-sm ${section === key ? 'border-b-2 border-sky-400 text-sky-300' : 'text-slate-400'}`}>{label}</button>)}</nav>
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
+        {section === 'chat' && <RepoAssistant audit={data} />}
+        {section === 'overview' && <section className="max-w-3xl space-y-8"><div><p className="text-sm font-medium text-sky-300">Repository overview</p><h2 className="mt-2 text-2xl font-semibold text-white">{data.metadata.description || 'No repository description is available.'}</h2></div><div className="grid gap-x-12 gap-y-5 border-y border-slate-800 py-6 sm:grid-cols-2"><Info label="Languages" value={data.techStack.languages.join(', ') || 'Unavailable'} /><Info label="Framework signals" value={data.techStack.frameworks.join(', ') || 'Not detected'} /><Info label="License" value={data.metadata.license || 'Not detected'} /><Info label="Last GitHub activity" value={data.metadata.lastPushed} /><Info label="Documentation" value={status(data.readme.exists, 'README verified')} /><Info label="Test configuration" value={status(data.signals.hasTests)} /><Info label="CI workflows" value={status(data.signals.hasCI)} /><Info label="Open GitHub issues" value={String(data.metadata.openIssues)} /></div><p className="text-sm leading-6 text-slate-400">These are repository signals retrieved from GitHub. They are not test results, deployment status, or a quality score.</p></section>}
+        {section === 'architecture' && <section className="max-w-3xl"><Title title="Architecture" note="Inferred from retrieved root files and configuration; inspect source in Chat for evidence." /><div className="mt-6 grid gap-3 sm:grid-cols-2">{data.signals.rootEntries.map(item => <div key={item} className="flex items-center gap-2 border-b border-slate-800 py-3 text-sm text-slate-300"><FileCode2 className="h-4 w-4 text-sky-300" /><code>{item}</code></div>)}</div></section>}
+        {section === 'issues' && <section className="max-w-3xl"><Title title="Issues & pull requests" note="Only GitHub issue count was retrieved in this audit. Ask Chat to retrieve and summarize the current open issues; AI recommendations are kept separate below." /><p className="mt-6 text-3xl font-semibold text-white">{data.metadata.openIssues} <span className="text-base font-normal text-slate-400">open issues reported</span></p><h3 className="mt-10 text-sm font-semibold text-slate-200">Improvement suggestions — not GitHub issues</h3><ul className="mt-3 space-y-3">{data.suggestedIssues.map(item => <li key={item.title} className="border-l-2 border-sky-500 pl-4"><p className="text-sm font-medium text-slate-200">{item.title}</p><p className="mt-1 text-sm text-slate-400">{item.body}</p></li>)}</ul></section>}
+        {section === 'security' && <section className="max-w-3xl"><Title title="Security review" note="This is a limited configuration review, not a comprehensive vulnerability assessment." /><div className="mt-7 space-y-4"><Signal title="Environment example" value={status(data.signals.hasEnvExample, 'Example configuration detected', 'No example configuration retrieved')} /><Signal title="Repository security policy" value="Unavailable in this audit; ask Chat to inspect SECURITY.md if indexed." /><Signal title="Confirmed vulnerabilities" value="Unavailable — no scanner or GitHub alert results were retrieved." /></div></section>}
+        {section === 'docs' && <section className="max-w-4xl"><Title title="Documentation" note="Generated README is a draft grounded in detected scripts and files. Review it before publishing." /><div className="mt-6 flex items-center gap-2 border-b border-slate-800"><button type="button" onClick={() => setReadmeTab('generated')} className={`px-3 py-2 text-sm ${readmeTab === 'generated' ? 'border-b-2 border-sky-400 text-sky-300' : 'text-slate-400'}`}>Generated draft</button><button type="button" onClick={() => setReadmeTab('original')} className={`px-3 py-2 text-sm ${readmeTab === 'original' ? 'border-b-2 border-sky-400 text-sky-300' : 'text-slate-400'}`}>Original README</button><span className="flex-1" /><button type="button" onClick={copy} className="p-2 text-slate-300" aria-label="Copy README"><Copy className="h-4 w-4" /></button>{readmeTab === 'generated' && <button type="button" onClick={download} className="p-2 text-slate-300" aria-label="Download README"><Download className="h-4 w-4" /></button>}</div>{copied && <p className="mt-2 text-xs text-emerald-300">Copied to clipboard.</p>}{readmeTab === 'generated' ? <textarea value={draft} onChange={event => setDraft(event.target.value)} className="mt-4 h-[520px] w-full resize-y rounded-md border border-slate-700 bg-slate-950 p-4 font-mono text-sm leading-6 text-slate-300 outline-none focus:border-sky-500" aria-label="Editable generated README draft" /> : <pre className="mt-4 max-h-[520px] overflow-auto rounded-md bg-slate-950 p-4 text-sm leading-6 text-slate-300 whitespace-pre-wrap">{data.readme.content || 'No README was retrieved.'}</pre>}</section>}
+        {section === 'cicd' && <section className="max-w-3xl"><Title title="CI/CD & testing" note="Presence of a workflow or test configuration does not verify that a run passed." /><div className="mt-7 space-y-4"><Signal title="GitHub Actions workflows" value={data.signals.workflowFiles.length ? data.signals.workflowFiles.join(', ') : 'Not detected'} /><Signal title="Test setup" value={status(data.signals.hasTests, 'Test configuration or convention detected', 'Not detected from inspected files')} /><Signal title="Available package scripts" value={Object.entries(data.signals.scripts).map(([name, command]) => `${name}: ${command}`).join(' · ') || 'Unavailable'} /><Signal title="Verified execution results" value="Unavailable — this audit does not execute repository code." /></div></section>}
       </div>
-
-      <div className="relative">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-emerald-600 rounded-2xl blur opacity-20" />
-        <div className="relative bg-slate-900 border border-slate-800 p-8 rounded-2xl">
-          <p className="text-slate-300 text-lg leading-relaxed">{data.improvementSummary}</p>
-        </div>
-      </div>
-
-      <RepoAssistant audit={data} />
-
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        <div className="md:col-span-4 space-y-8">
-          <Card>
-            <h3 className="font-bold text-white mb-4 text-lg">Tech Stack</h3>
-            <div className="space-y-4 text-sm">
-              {data.techStack.languages.length > 0 && (
-                <div>
-                  <p className="text-slate-500 mb-2">Languages</p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.techStack.languages.map((lang) => (
-                      <Badge key={lang}>{lang}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {data.techStack.frameworks.length > 0 && (
-                <div>
-                  <p className="text-slate-500 mb-2">Frameworks</p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.techStack.frameworks.map((fw) => (
-                      <Badge key={fw} variant="success">{fw}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {data.techStack.packageManagers.length > 0 && (
-                <div>
-                  <p className="text-slate-500 mb-2">Package Managers</p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.techStack.packageManagers.map((pm) => (
-                      <Badge key={pm}>{pm}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {data.techStack.infra.length > 0 && (
-                <div>
-                  <p className="text-slate-500 mb-2">Infrastructure</p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.techStack.infra.map((item) => (
-                      <Badge key={item}>{item}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="font-bold text-white mb-4 text-lg">Repository Signals</h3>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={data.signals.hasCI ? 'success' : 'destructive'}>
-                {data.signals.hasCI ? 'CI/CD' : 'No CI/CD'}
-              </Badge>
-              <Badge variant={data.signals.hasTests ? 'success' : 'destructive'}>
-                {data.signals.hasTests ? 'Tests' : 'No Tests'}
-              </Badge>
-              <Badge variant={data.signals.hasDocker ? 'success' : 'default'}>
-                {data.signals.hasDocker ? 'Docker' : 'No Docker'}
-              </Badge>
-              <Badge variant={data.signals.hasEnvExample ? 'success' : 'destructive'}>
-                {data.signals.hasEnvExample ? '.env.example' : 'No .env.example'}
-              </Badge>
-              <Badge variant={data.metadata.license ? 'success' : 'destructive'}>
-                {data.metadata.license || 'No License'}
-              </Badge>
-            </div>
-            {data.signals.configFiles.length > 0 && (
-              <p className="text-xs text-slate-500 mt-4">
-                Config: {data.signals.configFiles.slice(0, 8).join(', ')}
-                {data.signals.configFiles.length > 8 && '…'}
-              </p>
-            )}
-          </Card>
-
-          <Card className="border-red-900/30 bg-red-950/10">
-            <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-              <AlertTriangle className="text-red-500 w-5 h-5" />
-              Issues Found
-            </h3>
-            <ul className="space-y-2">
-              {data.health.issues.length === 0 && (
-                <li className="text-emerald-400 text-sm flex gap-2">
-                  <CheckCircle className="w-4 h-4" /> Healthy repository!
-                </li>
-              )}
-              {data.health.issues.map((issue, i) => (
-                <li
-                  key={i}
-                  className="text-sm text-red-200 bg-red-500/10 p-2 rounded-lg border border-red-500/10"
-                >
-                  {issue}
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Card>
-            <h3 className="font-bold text-white mb-4 text-lg">README Sections</h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-emerald-400 mb-2">Found</p>
-                <div className="flex flex-wrap gap-2">
-                  {data.readme.sectionsFound.length === 0 && (
-                    <span className="text-slate-500">None detected</span>
-                  )}
-                  {data.readme.sectionsFound.map((s) => (
-                    <Badge key={s} variant="success">{s}</Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-amber-400 mb-2">Missing</p>
-                <div className="flex flex-wrap gap-2">
-                  {data.readme.sectionsMissing.length === 0 && (
-                    <span className="text-slate-500">All key sections present</span>
-                  )}
-                  {data.readme.sectionsMissing.map((s) => (
-                    <Badge key={s} variant="destructive">{s}</Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <div className="md:col-span-8 space-y-8">
-          <Card>
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                README
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setReadmeTab('generated')}
-                  className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                    readmeTab === 'generated'
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Generated
-                </button>
-                <button
-                  onClick={() => setReadmeTab('original')}
-                  className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                    readmeTab === 'original'
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Original
-                </button>
-                <button
-                  onClick={() => copyText(readmeContent, 'readme')}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-slate-700 text-slate-400 hover:text-white transition"
-                >
-                  <Copy className="w-4 h-4" />
-                  {copied === 'readme' ? 'Copied!' : 'Copy'}
-                </button>
-                <button
-                  onClick={downloadReadme}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-slate-700 text-slate-400 hover:text-white transition"
-                >
-                  <Download className="w-4 h-4" />
-                  Download
-                </button>
-              </div>
-            </div>
-            <pre className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 text-sm text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-[500px] overflow-y-auto font-mono">
-              {readmeContent}
-            </pre>
-          </Card>
-
-          <div className="bg-gradient-to-br from-emerald-900/20 to-slate-900 border border-emerald-900/30 rounded-2xl p-6 md:p-8">
-            <h3 className="font-bold text-white mb-6 flex items-center gap-2 text-xl">
-              <CheckCircle className="text-emerald-500 w-6 h-6" />
-              Suggested GitHub Issues
-            </h3>
-            <div className="grid gap-4">
-              {data.suggestedIssues.map((issue, i) => (
-                <div
-                  key={i}
-                  className="p-4 bg-slate-950/50 rounded-xl border border-slate-800/50 hover:bg-slate-900 transition"
-                >
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <h4 className="font-bold text-white">{issue.title}</h4>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={priorityVariant(issue.priority)}>{issue.priority}</Badge>
-                      <button
-                        onClick={() => copyText(formatIssue(issue), `issue-${i}`)}
-                        className="text-slate-500 hover:text-white transition"
-                        title="Copy issue template"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-slate-400 text-sm whitespace-pre-wrap">{issue.body}</p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {issue.labels.map((label) => (
-                      <Badge key={label}>{label}</Badge>
-                    ))}
-                  </div>
-                  {copied === `issue-${i}` && (
-                    <p className="text-emerald-400 text-xs mt-2">Copied to clipboard!</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    </main>
+  </div>;
 }
+function Title({ title, note }: { title: string; note: string }) { return <><h2 className="text-2xl font-semibold text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{note}</p></>; }
+function Info({ label, value }: { label: string; value: ReactNode }) { return <div><p className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</p><p className="mt-1 text-sm text-slate-200">{value}</p></div>; }
+function Signal({ title, value }: { title: string; value: ReactNode }) { return <div className="border-b border-slate-800 pb-4"><p className="text-sm font-medium text-slate-200">{title}</p><p className="mt-1 text-sm text-slate-400">{value}</p></div>; }
