@@ -27,6 +27,9 @@ const mediumPriority = /(^|\/)(src|app|pages|api|server|backend|lib|services|hoo
 
 function headers() {
   const token = process.env.GITHUB_TOKEN;
+  if (token && (typeof token !== 'string' || token.trim().length === 0)) {
+    throw new Error("Invalid GITHUB_TOKEN configuration");
+  }
   return { Accept: "application/vnd.github+json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 async function githubJson<T>(url: string): Promise<T> {
